@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Snake fun+ (iPhone 4 Safari)</title>
+  <style>
+    html,body{height:100%;margin:0;padding:0;background:#000;font-family:Helvetica,Arial,sans-serif}
+    #wrap{display:flex;flex-direction:column;height:100%}
+    canvas{flex:1;display:block;width:100%;height:100%;background:#111}
+    #hud{height:56px;display:flex;align-items:center;justify-content:space-between;padding:6px}
+    #score{color:#fff;font-size:16px}
+    .controls{display:flex;gap:6px}
+    .btn{width:44px;height:44px;border-radius:6px;border:0;background:#222;color:#fff;font-size:20px}
+    .small{font-size:13px;padding:4px 8px}
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="hud">
+      <div id="score">Score: 0 | High: 0</div>
+      <div class="controls">
+        <button id="btnUp" class="btn">▲</button>
+        <button id="btnLeft" class="btn">◄</button>
+        <button id="btnRight" class="btn">►</button>
+        <button id="btnDown" class="btn">▼</button>
+        <button id="btnRestart" class="btn small">Restart</button>
+      </div>
+    </div>
+  </div>
+<script>
+(function(){
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var scoreEl = document.getElementById('score');
+  var w = 0, h = 0;
+  var CELL = 16;
+  var cols, rows;
+  var snake, dir, nextDir, foods, timer, speed = 100;
+  var running = false;
+  var appleEmoji = '🍎';
+  var bonusEmoji = '⭐';
+  var bonus = null;
+  var highScore = parseInt(localStorage.getItem('snakeHigh')||'0',10);
+
+  function fitCanvas(){
+    var vw = window.innerWidth;
+    var vh = window.innerHeight - 56;
+    cols = Math.max(10, Math.floor(vw / CELL));
+    rows = Math.max(12, Math.floor(vh / CELL));
+    canvas.width = cols * CELL;
+    canvas.height = rows * CELL;
+    canvas.style.width = (cols*CELL) + 'px';
+    canvas.style.height = (rows*CELL) + 'px';
+    w = canvas.width; h = canvas.height;
+  }
+
+  function start(){
+    fitCanvas();
+    snake = [{x: Math.floor(cols/2), y: Math.floor(rows/2)}];
+    for(var i=1;i<4;i++){ snake.push({x: snake[0].x - i, y: snake[0].y}); }
+    dir = {x:1,y:0}; nextDir = {x:1,y:0};
+    foods = [];
+    for(var j=0;j<3;j++){placeFood();}
+    bonus=null;
+    running = true;
+    updateScore();
+    if(timer) clearInterval(timer);
+    timer = setInterval(tick, speed);
+    draw();
+  }
+
+  function updateScore(){
+    var sc = (snake.length - 4);
+    if(sc>highScore){highScore=sc;localStorage.setItem('snakeHigh',highScore);}
+    scoreEl.textContent = 'Score: '+sc+' | High: '+highScore;
+  }
+
+  function placeFood(){
+    var ok=false, fx, fy;
+    while(!ok){
+      fx = Math.floor(Math.random()*(cols-2))+1;
+      fy = Math.floor(Math.random()*(rows-2))+1;
+      ok = true;
+      for(var i=0;i<snake.length;i++){ if(snake[i].x===fx && snake[i].y===fy){ ok=false; break; } }
+      for(var j=0;j<foods.length;j++){ if(foods[j].x===fx && foods[j].y===fy){ok=false;break;} }
+    }
+    foods.push({x:fx,y:fy});
+  }
+
+  function placeBonus(){
+    var bx, by, ok=false;
+    while(!ok){
+      bx = Math.floor(Math.random()*(cols-2))+1;
+      by = Math.floor(Math.random()*(rows-2))+1;
+      ok=true;
+      for(var i=0;i<snake.length;i++){ if(snake[i].x===bx && snake[i].y===by){ok=false;break;} }
+    }
+    bonus={x:bx,y:by,life:50};
+  }
+
+  function tick(){
+    if(Math.abs(nextDir.x) !== Math.abs(dir.x) || Math.abs(nextDir.y) !== Math.abs(dir.y)){
+      dir = nextDir;
+    }
+    var nx = snake[0].x + dir.x;
+    var ny = snake[0].y + dir.y;
+    if(nx <=0 || nx >= cols-1 || ny <=0 || ny >= rows-1){gameOver();return;}
+    for(var i=0;i<snake.length;i++){ if(snake[i].x===nx && snake[i].y===ny){gameOver();return;} }
+    snake.unshift({x:nx,y:ny});
+    var ate=false;
+    for(var j=0;j<foods.length;j++){
+      if(nx===foods[j].x && ny===foods[j].y){
+        foods.splice(j,1);
+        placeFood();
+        ate=true;
+        break;
+      }
+    }
+    if(bonus && nx===bonus.x && ny===bonus.y){
+      for(var k=0;k<3;k++){snake.push({x:snake[snake.length-1].x,y:snake[snake.length-1].y});}
+      bonus=null;
+    }
+    if(!ate){snake.pop();}
+    if(Math.random()<0.01 && !bonus){placeBonus();}
+    if(bonus){bonus.life--; if(bonus.life<=0)bonus=null;}
+    updateScore();
+    draw();
+  }
+
+  function gameOver(){
+    running=false;
+    if(timer)clearInterval(timer);
+    for(var i=0;i<3;i++){
+      (function(i){setTimeout(function(){
+        ctx.fillStyle = (i%2? '#600':'#111');
+        ctx.fillRect(0,0,w,h);
+        drawWalls();drawSnake();drawFood();drawBonus();
+      },i*120);})(i);
+    }
+  }
+
+  function draw(){
+    ctx.fillStyle='#111';ctx.fillRect(0,0,w,h);
+    drawWalls();
+    drawFood();
+    drawBonus();
+    drawSnake();
+  }
+
+  function drawWalls(){
+    ctx.fillStyle='#333';
+    for(var x=0;x<cols;x++){ctx.fillRect(x*CELL,0,CELL,CELL);ctx.fillRect(x*CELL,(rows-1)*CELL,CELL,CELL);}
+    for(var y=0;y<rows;y++){ctx.fillRect(0,y*CELL,CELL,CELL);ctx.fillRect((cols-1)*CELL,y*CELL,CELL,CELL);}    
+  }
+
+  function drawSnake(){
+    ctx.fillStyle='#6e6';
+    for(var i=0;i<snake.length;i++){
+      var s=snake[i];
+      var x=s.x*CELL,y=s.y*CELL;
+      if(i===0){ctx.fillStyle='#9f3';} else {ctx.fillStyle='#6e6';}
+      ctx.fillRect(x+1,y+1,CELL-2,CELL-2);
+    }
+  }
+
+  function drawFood(){
+    ctx.font=CELL+'px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+    for(var j=0;j<foods.length;j++){
+      var f=foods[j];ctx.fillText(appleEmoji,f.x*CELL+CELL/2,f.y*CELL+CELL/2);
+    }
+  }
+
+  function drawBonus(){
+    if(!bonus)return;
+    ctx.font=CELL+'px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(bonusEmoji,bonus.x*CELL+CELL/2,bonus.y*CELL+CELL/2);
+  }
+
+  function setDirection(dx,dy){if((dx === -dir.x && dy === -dir.y))return;nextDir={x:dx,y:dy};}
+  document.getElementById('btnUp').addEventListener('click',function(){setDirection(0,-1);});
+  document.getElementById('btnDown').addEventListener('click',function(){setDirection(0,1);});
+  document.getElementById('btnLeft').addEventListener('click',function(){setDirection(-1,0);});
+  document.getElementById('btnRight').addEventListener('click',function(){setDirection(1,0);});
+  document.getElementById('btnRestart').addEventListener('click',start);
+
+  document.addEventListener('keydown',function(e){var k=e.keyCode;if(k===37)setDirection(-1,0);else if(k===38)setDirection(0,-1);else if(k===39)setDirection(1,0);else if(k===40)setDirection(0,1);},false);
+
+  var touchStartX=0,touchStartY=0;
+  canvas.addEventListener('touchstart',function(e){if(!e.touches)return;touchStartX=e.touches[0].clientX;touchStartY=e.touches[0].clientY;},false);
+  canvas.addEventListener('touchend',function(e){if(!e.changedTouches)return;var dx=e.changedTouches[0].clientX-touchStartX;var dy=e.changedTouches[0].clientY-touchStartY;if(Math.abs(dx)<10&&Math.abs(dy)<10){if(running){clearInterval(timer);running=false;}else{timer=setInterval(tick,speed);running=true;}return;}if(Math.abs(dx)>Math.abs(dy)){if(dx>0)setDirection(1,0);else setDirection(-1,0);}else{if(dy>0)setDirection(0,1);else setDirection(0,-1);}},false);
+
+  window.addEventListener('orientationchange',function(){setTimeout(function(){fitCanvas();draw();},120);},false);
+  window.addEventListener('resize',function(){setTimeout(function(){fitCanvas();draw();},120);},false);
+
+  window.addEventListener('load',start,false);
+})();
+</script>
+</body>
+</html>
